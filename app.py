@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import asyncio
-
+import os
 app = FastAPI()
 
 # ✅ Allow frontend to connect
@@ -14,9 +14,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ✅ Suno API setup
-API_KEY = "c96f16f59b799ee79eb2743537791ab9"  # Replace with your actual key
+import os
+API_KEY = os.getenv("SUNO_API_KEY")
 SUNO_API_URL = "https://api.suno.ai/v1/generate_music"
 HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
