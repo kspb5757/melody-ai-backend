@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import httpx
 import asyncio
 import os
+
 app = FastAPI()
 
 # ✅ Allow frontend to connect
@@ -14,7 +15,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-import os
+
+# ✅ Suno API setup
 API_KEY = os.getenv("SUNO_API_KEY")
 SUNO_API_URL = "https://api.suno.ai/v1/generate_music"
 HEADERS = {
@@ -27,6 +29,9 @@ class MusicRequest(BaseModel):
 
 @app.post("/generate_music")
 async def generate_music(request: MusicRequest):
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
     payload = {"prompt": request.prompt}
     timeout = httpx.Timeout(10.0, connect=5.0)
     retries = 3
@@ -37,19 +42,32 @@ async def generate_music(request: MusicRequest):
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
-                print("🔍 Raw Suno response:", response.text)  # 👈 Add this here
-                # Handle unexpected HTML or failed status
+                print(f"🔍 Status Code: {response.status_code}")
+                print(f"🔍 Headers: {response.headers}")
+                print("🔍 Raw Suno response:", response.text)
+
                 if "text/html" in response.headers.get("content-type", "") or response.status_code != 200:
                     print(f"⚠️ Attempt {attempt+1}: Invalid response from Suno")
                     await asyncio.sleep(2)
                     continue
 
-                data = response.json()
+                try:
+                    data = response.json()
+                except Exception as e:
+                    print(f"❌ JSON decode error: {e}")
+                    await asyncio.sleep(2)
+                    continue
+
+                print("🧾 Parsed JSON:", data)
                 music_url = data.get("audio_url")
                 print(f"✅ Attempt {attempt+1}: Music URL → {music_url}")
 
                 if not music_url:
-                    raise HTTPException(status_code=500, detail="No audio URL in response.")
+                    return {
+                        "music_url": None,
+                        "error": "No audio URL returned. Try a different prompt or check API status."
+                    }
+
                 return {"music_url": music_url}
         except Exception as e:
             print(f"❌ Attempt {attempt+1}: Exception → {e}")
@@ -70,4 +88,5 @@ async def health_check():
             status = "online" if response.status_code == 200 else "offline"
     except:
         status = "unreachable"
+    print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
