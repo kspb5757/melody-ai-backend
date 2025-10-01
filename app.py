@@ -45,16 +45,33 @@ async def generate_music(request: MusicRequest):
         "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
-        data = response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
+            print(f"🔍 Suno API Status Code: {response.status_code}")
+            print(f"🔍 Suno API Response Content: {response.text}")
 
-    task_id = data.get("data", {}).get("id")
-    if not task_id:
-        raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Suno API error: {response.status_code} - {response.text}"
+                )
 
-    # Return only task ID—frontend must poll or wait for callback
-    return {"taskId": task_id}
+            data = response.json()
+            task_id = data.get("data", {}).get("id")
+
+            if not task_id:
+                raise HTTPException(status_code=500, detail="No task ID returned from Suno API response.")
+
+            return {"taskId": task_id}
+
+    except httpx.RequestError as e:
+        print(f"❌ Request error while calling Suno API: {e}")
+        raise HTTPException(status_code=500, detail=f"Request error: {e}")
+
+    except Exception as e:
+        print(f"❌ Unexpected error in /generate_music: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/callback")
 async def receive_music(data: dict):
