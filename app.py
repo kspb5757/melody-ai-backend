@@ -37,6 +37,7 @@ async def generate_music(request: MusicRequest):
     "customMode": True,
     "instrumental": True,
     "model": "V3_5"
+     "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
         }
     timeout = httpx.Timeout(10.0, connect=5.0)
     retries = 3
