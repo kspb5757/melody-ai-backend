@@ -12,7 +12,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://melodyai.edgeone.app"]  # Replace with your frontend domain for production
+    allow_origins=["https://melodyai.edgeone.app"], # Replace with your frontend domain for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
