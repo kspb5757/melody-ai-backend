@@ -18,7 +18,7 @@ app.add_middleware(
 
 # ✅ Suno API setup
 API_KEY = os.getenv("SUNO_API_KEY")
-SUNO_API_URL = "https://api.suno.ai/v1/generate_music"
+SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"
 HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json"
@@ -31,8 +31,13 @@ class MusicRequest(BaseModel):
 async def generate_music(request: MusicRequest):
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
-
-    payload = {"prompt": request.prompt}
+    payload = {
+    "prompt": request.prompt,
+    "title": "Melody AI Track",
+    "customMode": True,
+    "instrumental": True,
+    "model": "V3_5"
+        }
     timeout = httpx.Timeout(10.0, connect=5.0)
     retries = 3
 
@@ -79,6 +84,9 @@ async def generate_music(request: MusicRequest):
         "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
         "message": "🎵 Suno is unreachable. Here's a sample melody instead!"
     }
+@app.get("/")
+def home():
+    return {"message": "Backend is working!"}
 
 @app.get("/health")
 async def health_check():
