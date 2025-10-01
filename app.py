@@ -54,10 +54,13 @@ async def generate_music(request: MusicRequest):
             print(f"❌ JSON decode error: {e}")
             raise HTTPException(status_code=500, detail="Failed to parse Suno response.")
 
-    # ✅ Check for credit error
+    # ✅ Handle credit exhaustion
     if data.get("code") == 429:
         print("🚫 Suno credits exhausted.")
-        raise HTTPException(status_code=429, detail="Suno credits exhausted. Please top up or try later.")
+        return {
+            "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
+        }
 
     task_id = data.get("data", {}).get("id")
     if not task_id:
@@ -65,6 +68,7 @@ async def generate_music(request: MusicRequest):
 
     print(f"✅ Task ID received: {task_id}")
     return {"taskId": task_id}
+
 @app.post("/callback")
 async def receive_music(data: dict):
     print("🎧 Callback received:", data)
@@ -83,7 +87,6 @@ def get_music(task_id: str):
     if music_url:
         return {"taskId": task_id, "music_url": music_url}
     else:
-        # Still generating or not found yet
         return {"taskId": task_id, "music_url": None, "message": "Music not ready, try again later."}
 
 @app.get("/")
@@ -100,8 +103,3 @@ async def health_check():
         status = "unreachable"
     print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
-if data.get("code") == 429:
-    return {
-        "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-        "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
-    }
