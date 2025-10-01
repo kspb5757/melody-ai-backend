@@ -15,12 +15,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://melodyai.edgeone.app"],
+    allow_origins=["https://melodyai.edgeone.app"],  # ✅ Your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ✅ Suno API setup
 API_KEY = os.getenv("SUNO_API_KEY")
 SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"
 HEADERS = {
@@ -48,6 +49,11 @@ async def generate_music(request: MusicRequest):
     async with httpx.AsyncClient() as client:
         response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
 
+        # ✅ Validate response type
+        if response.status_code != 200 or "application/json" not in response.headers.get("content-type", ""):
+            print(f"❌ Invalid response from Suno: {response.status_code}")
+            raise HTTPException(status_code=502, detail="Invalid response from Suno API.")
+
         try:
             data = response.json()
         except Exception as e:
@@ -64,6 +70,7 @@ async def generate_music(request: MusicRequest):
 
     task_id = data.get("data", {}).get("id")
     if not task_id:
+        print("❌ No task ID found in Suno response.")
         raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
 
     print(f"✅ Task ID received: {task_id}")
