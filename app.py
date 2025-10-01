@@ -31,7 +31,6 @@ HEADERS = {
 
 class MusicRequest(BaseModel):
     prompt: str
-
 @app.post("/generate_music")
 async def generate_music(request: MusicRequest):
     if not request.prompt.strip():
@@ -49,11 +48,6 @@ async def generate_music(request: MusicRequest):
     async with httpx.AsyncClient() as client:
         response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
 
-        # ✅ Validate response type
-        if response.status_code != 200 or "application/json" not in response.headers.get("content-type", ""):
-            print(f"❌ Invalid response from Suno: {response.status_code}")
-            raise HTTPException(status_code=502, detail="Invalid response from Suno API.")
-
         try:
             data = response.json()
         except Exception as e:
@@ -68,14 +62,18 @@ async def generate_music(request: MusicRequest):
             "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
         }
 
-    task_id = data.get("data", {}).get("id")
+    # ✅ Guard against missing data
+    if not data.get("data"):
+        print("❌ No 'data' field in Suno response.")
+        raise HTTPException(status_code=500, detail="Suno did not return a valid task ID.")
+
+    task_id = data["data"].get("id")
     if not task_id:
         print("❌ No task ID found in Suno response.")
         raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
 
     print(f"✅ Task ID received: {task_id}")
     return {"taskId": task_id}
-
 @app.post("/callback")
 async def receive_music(data: dict):
     print("🎧 Callback received:", data)
