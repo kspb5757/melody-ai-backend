@@ -99,3 +99,15 @@ async def health_check():
         status = "unreachable"
     print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
+@app.post("/callback")
+async def receive_music(data: dict):
+    print("🎧 Callback received:", data)
+    music_url = data.get("audio_url")
+    task_id = data.get("taskId")
+
+    if music_url:
+        print(f"✅ Music URL received: {music_url}")
+    else:
+        print(f"⚠️ No music URL found for task ID: {task_id}")
+
+    return {"status": "received"}
