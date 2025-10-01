@@ -4,15 +4,18 @@ from pydantic import BaseModel
 import httpx
 import asyncio
 import os
+
 music_store = {}
+
 app = FastAPI(
     title="Melody AI Backend",
     description="Generate music from prompts using Suno API",
     version="1.0.0"
 )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://melodyai.edgeone.app"], # Replace with your frontend domain for production
+    allow_origins=["https://melodyai.edgeone.app"],  # Replace with your frontend domain for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,14 +36,16 @@ class MusicRequest(BaseModel):
 async def generate_music(request: MusicRequest):
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+    
     payload = {
-    "prompt": request.prompt,
-    "title": "Melody AI Track",
-    "customMode": True,
-    "instrumental": True,
-    "model": "V3_5",
-     "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
-        }
+        "prompt": request.prompt,
+        "title": "Melody AI Track",
+        "customMode": True,
+        "instrumental": True,
+        "model": "V3_5",
+        "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
+    }
+
     timeout = httpx.Timeout(10.0, connect=5.0)
     retries = 3
 
@@ -87,6 +92,7 @@ async def generate_music(request: MusicRequest):
         "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
         "message": "🎵 Suno is unreachable. Here's a sample melody instead!"
     }
+
 @app.get("/")
 def home():
     return {"message": "Backend is working!"}
@@ -101,11 +107,14 @@ async def health_check():
         status = "unreachable"
     print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
+
 @app.post("/callback")
 async def receive_music(data: dict):
     print("🎧 Callback received:", data)
-    music_url = data.get("audio_url")
-    task_id = data.get("id")
+
+    # ✅ Extract from nested 'data' object
+    task_id = data.get("data", {}).get("id")
+    music_url = data.get("data", {}).get("audio_url")
 
     if task_id and music_url:
         music_store[task_id] = music_url
@@ -114,6 +123,7 @@ async def receive_music(data: dict):
     else:
         print(f"⚠️ Missing taskId or music_url in callback.")
         return {"status": "error", "message": "Missing taskId or music_url"}
+
 @app.get("/music/{task_id}")
 def get_music(task_id: str):
     music_url = music_store.get(task_id)
