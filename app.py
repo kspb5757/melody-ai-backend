@@ -45,34 +45,26 @@ async def generate_music(request: MusicRequest):
         "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
-            print(f"🔍 Suno API Status Code: {response.status_code}")
-            print(f"🔍 Suno API Response Content: {response.text}")
+    async with httpx.AsyncClient() as client:
+        response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Suno API error: {response.status_code} - {response.text}"
-                )
-
+        try:
             data = response.json()
-            task_id = data.get("data", {}).get("id")
+        except Exception as e:
+            print(f"❌ JSON decode error: {e}")
+            raise HTTPException(status_code=500, detail="Failed to parse Suno response.")
 
-            if not task_id:
-                raise HTTPException(status_code=500, detail="No task ID returned from Suno API response.")
+    # ✅ Check for credit error
+    if data.get("code") == 429:
+        print("🚫 Suno credits exhausted.")
+        raise HTTPException(status_code=429, detail="Suno credits exhausted. Please top up or try later.")
 
-            return {"taskId": task_id}
+    task_id = data.get("data", {}).get("id")
+    if not task_id:
+        raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
 
-    except httpx.RequestError as e:
-        print(f"❌ Request error while calling Suno API: {e}")
-        raise HTTPException(status_code=500, detail=f"Request error: {e}")
-
-    except Exception as e:
-        print(f"❌ Unexpected error in /generate_music: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
+    print(f"✅ Task ID received: {task_id}")
+    return {"taskId": task_id}
 @app.post("/callback")
 async def receive_music(data: dict):
     print("🎧 Callback received:", data)
@@ -108,3 +100,8 @@ async def health_check():
         status = "unreachable"
     print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
+if data.get("code") == 429:
+    return {
+        "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
+    }
