@@ -36,7 +36,7 @@ async def generate_music(request: MusicRequest):
     "title": "Melody AI Track",
     "customMode": True,
     "instrumental": True,
-    "model": "V3_5"
+    "model": "V3_5",
      "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
         }
     timeout = httpx.Timeout(10.0, connect=5.0)
