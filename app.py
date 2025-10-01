@@ -11,10 +11,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# ✅ CORS for your frontend
+# ✅ Allow frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://melodyai.edgeone.app"],  # Replace with your frontend domain
+    allow_origins=["*"],  # 🔥 you can lock this to your frontend domain later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,10 +42,11 @@ async def generate_music(request: MusicRequest):
         "customMode": True,
         "instrumental": True,
         "model": "V3_5",
-        "callBackUrl": None  # ❌ No callback, we will poll manually
+        "callBackUrl": None
     }
 
-    async with httpx.AsyncClient() as client:
+    # ✅ increase timeout for initial request
+    async with httpx.AsyncClient(timeout=60.0) as client:  
         response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
 
         try:
@@ -54,9 +55,7 @@ async def generate_music(request: MusicRequest):
             print(f"❌ JSON decode error: {e}")
             raise HTTPException(status_code=500, detail="Failed to parse Suno response.")
 
-    # ✅ Handle credit exhaustion
     if data.get("code") == 429:
-        print("🚫 Suno credits exhausted.")
         return {
             "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
             "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
@@ -68,27 +67,29 @@ async def generate_music(request: MusicRequest):
 
     print(f"✅ Task ID received: {task_id}")
 
-    # 🔄 Poll for result (wait until Suno returns audio_url)
-    for _ in range(30):  # Try for up to ~30 seconds
-        await asyncio.sleep(2)  # wait before polling
-        poll_url = f"https://api.sunoapi.org/api/v1/status/{task_id}"
-        poll_resp = await client.get(poll_url, headers=HEADERS)
+    # 🔄 Poll for up to 120 seconds (2 minutes)
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for _ in range(60):  # 60 retries × 2s = 120s
+            await asyncio.sleep(2)
+            poll_url = f"https://api.sunoapi.org/api/v1/status/{task_id}"
+            poll_resp = await client.get(poll_url, headers=HEADERS)
 
-        try:
-            poll_data = poll_resp.json()
-        except:
-            continue
+            try:
+                poll_data = poll_resp.json()
+            except Exception as e:
+                print("❌ Poll JSON error:", e)
+                continue
 
-        audio_url = poll_data.get("data", {}).get("audio_url")
-        if audio_url:
-            print(f"🎶 Music ready: {audio_url}")
-            return {"taskId": task_id, "music_url": audio_url}
+            audio_url = poll_data.get("data", {}).get("audio_url")
+            if audio_url:
+                print(f"🎶 Music ready: {audio_url}")
+                return {"taskId": task_id, "music_url": audio_url}
 
-    # ❌ Timeout – no music generated
+    # ❌ Still not ready
     return {
         "taskId": task_id,
         "music_url": None,
-        "message": "⏳ Music not ready yet. Try again later."
+        "message": "⏳ Music generation took too long. Try again."
     }
 
 
@@ -99,10 +100,9 @@ def home():
 @app.get("/health")
 async def health_check():
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(SUNO_API_URL, headers=HEADERS)
             status = "online" if response.status_code == 200 else "offline"
     except:
         status = "unreachable"
-    print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
