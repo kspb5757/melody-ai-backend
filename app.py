@@ -5,12 +5,14 @@ import httpx
 import asyncio
 import os
 
-app = FastAPI()
-
-# ✅ Allow frontend to connect
+app = FastAPI(
+    title="Melody AI Backend",
+    description="Generate music from prompts using Suno API",
+    version="1.0.0"
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your frontend domain for production
+    allow_origins=["https://melodyai.edgeone.app"]  # Replace with your frontend domain for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
