@@ -8,13 +8,16 @@ import os
 app = FastAPI(
     title="Melody AI Backend",
     description="Generate music from prompts using Suno API",
-    version="1.0.0"
+    version="1.1.0"
 )
 
-# ✅ Allow frontend
+# ✅ Allow frontend + backend domains (important for CORS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 🔥 you can lock this to your frontend domain later
+    allow_origins=[
+        "https://melodyai.edgeone.app",          # Your frontend domain
+        "https://melody-ai-backend.onrender.com" # Backend domain (for testing)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,6 +36,10 @@ class MusicRequest(BaseModel):
 
 @app.post("/generate_music")
 async def generate_music(request: MusicRequest):
+    """
+    Accepts a music prompt, sends it to Suno API,
+    and waits for generated audio (up to 2 minutes).
+    """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
@@ -45,8 +52,8 @@ async def generate_music(request: MusicRequest):
         "callBackUrl": None
     }
 
-    # ✅ increase timeout for initial request
-    async with httpx.AsyncClient(timeout=60.0) as client:  
+    # ✅ Increase timeout for initial request
+    async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
 
         try:
@@ -55,21 +62,23 @@ async def generate_music(request: MusicRequest):
             print(f"❌ JSON decode error: {e}")
             raise HTTPException(status_code=500, detail="Failed to parse Suno response.")
 
+    # ✅ Handle rate limit (credits exhausted)
     if data.get("code") == 429:
         return {
             "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
             "message": "🚫 Suno credits exhausted. Here's a sample melody instead!"
         }
 
+    # ✅ Get task ID
     task_id = data.get("data", {}).get("id")
     if not task_id:
         raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
 
     print(f"✅ Task ID received: {task_id}")
 
-    # 🔄 Poll for up to 120 seconds (2 minutes)
+    # 🔄 Poll Suno for up to 180 seconds (3 minutes)
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for _ in range(60):  # 60 retries × 2s = 120s
+        for _ in range(90):  # 90 retries × 2s = 180s
             await asyncio.sleep(2)
             poll_url = f"https://api.sunoapi.org/api/v1/status/{task_id}"
             poll_resp = await client.get(poll_url, headers=HEADERS)
@@ -85,13 +94,12 @@ async def generate_music(request: MusicRequest):
                 print(f"🎶 Music ready: {audio_url}")
                 return {"taskId": task_id, "music_url": audio_url}
 
-    # ❌ Still not ready
+    # ❌ Still not ready after 3 minutes
     return {
         "taskId": task_id,
         "music_url": None,
         "message": "⏳ Music generation took too long. Try again."
     }
-
 
 @app.get("/")
 def home():
