@@ -15,13 +15,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://melodyai.edgeone.app"],  # Replace with your frontend domain for production
+    allow_origins=["https://melodyai.edgeone.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Suno API setup
 API_KEY = os.getenv("SUNO_API_KEY")
 SUNO_API_URL = "https://api.sunoapi.org/api/v1/generate"
 HEADERS = {
@@ -36,7 +35,7 @@ class MusicRequest(BaseModel):
 async def generate_music(request: MusicRequest):
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
-    
+
     payload = {
         "prompt": request.prompt,
         "title": "Melody AI Track",
@@ -46,52 +45,37 @@ async def generate_music(request: MusicRequest):
         "callBackUrl": "https://melody-ai-backend.onrender.com/callback"
     }
 
-    timeout = httpx.Timeout(10.0, connect=5.0)
-    retries = 3
+    async with httpx.AsyncClient() as client:
+        response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
+        data = response.json()
 
-    print(f"🎯 Prompt received: {request.prompt}")
+    task_id = data.get("data", {}).get("id")
+    if not task_id:
+        raise HTTPException(status_code=500, detail="No task ID returned from Suno.")
 
-    for attempt in range(retries):
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(SUNO_API_URL, json=payload, headers=HEADERS)
-                print(f"🔍 Status Code: {response.status_code}")
-                print(f"🔍 Headers: {response.headers}")
-                print("🔍 Raw Suno response:", response.text)
+    # Return only task ID—frontend must poll or wait for callback
+    return {"taskId": task_id}
 
-                if "text/html" in response.headers.get("content-type", "") or response.status_code != 200:
-                    print(f"⚠️ Attempt {attempt+1}: Invalid response from Suno")
-                    await asyncio.sleep(2)
-                    continue
+@app.post("/callback")
+async def receive_music(data: dict):
+    print("🎧 Callback received:", data)
+    task_id = data.get("data", {}).get("id")
+    music_url = data.get("data", {}).get("audio_url")
+    if task_id and music_url:
+        music_store[task_id] = music_url
+        print(f"✅ Stored music for task {task_id}: {music_url}")
+        return {"status": "stored", "taskId": task_id}
+    print(f"⚠️ Missing taskId or music_url in callback.")
+    return {"status": "error", "message": "Missing taskId or music_url"}
 
-                try:
-                    data = response.json()
-                except Exception as e:
-                    print(f"❌ JSON decode error: {e}")
-                    await asyncio.sleep(2)
-                    continue
-
-                print("🧾 Parsed JSON:", data)
-                music_url = data.get("audio_url")
-                print(f"✅ Attempt {attempt+1}: Music URL → {music_url}")
-
-                if not music_url:
-                    return {
-                        "music_url": None,
-                        "error": "No audio URL returned. Try a different prompt or check API status."
-                    }
-
-                return {"music_url": music_url}
-        except Exception as e:
-            print(f"❌ Attempt {attempt+1}: Exception → {e}")
-            await asyncio.sleep(2)
-
-    # 🔁 Fallback response
-    print("🔁 Suno unreachable. Returning fallback melody.")
-    return {
-        "music_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-        "message": "🎵 Suno is unreachable. Here's a sample melody instead!"
-    }
+@app.get("/music/{task_id}")
+def get_music(task_id: str):
+    music_url = music_store.get(task_id)
+    if music_url:
+        return {"taskId": task_id, "music_url": music_url}
+    else:
+        # Still generating or not found yet
+        return {"taskId": task_id, "music_url": None, "message": "Music not ready, try again later."}
 
 @app.get("/")
 def home():
@@ -107,27 +91,3 @@ async def health_check():
         status = "unreachable"
     print(f"🩺 Suno health check: {status}")
     return {"suno_status": status}
-
-@app.post("/callback")
-async def receive_music(data: dict):
-    print("🎧 Callback received:", data)
-
-    # ✅ Extract from nested 'data' object
-    task_id = data.get("data", {}).get("id")
-    music_url = data.get("data", {}).get("audio_url")
-
-    if task_id and music_url:
-        music_store[task_id] = music_url
-        print(f"✅ Stored music for task {task_id}: {music_url}")
-        return {"status": "stored", "taskId": task_id}
-    else:
-        print(f"⚠️ Missing taskId or music_url in callback.")
-        return {"status": "error", "message": "Missing taskId or music_url"}
-
-@app.get("/music/{task_id}")
-def get_music(task_id: str):
-    music_url = music_store.get(task_id)
-    if music_url:
-        return {"taskId": task_id, "music_url": music_url}
-    else:
-        raise HTTPException(status_code=404, detail="Music not found for this task ID.")
