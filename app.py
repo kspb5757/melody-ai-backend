@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import httpx
 import asyncio
 import os
-
+music_store = {}
 app = FastAPI(
     title="Melody AI Backend",
     description="Generate music from prompts using Suno API",
@@ -107,9 +107,17 @@ async def receive_music(data: dict):
     music_url = data.get("audio_url")
     task_id = data.get("taskId")
 
-    if music_url:
-        print(f"✅ Music URL received: {music_url}")
+    if task_id and music_url:
+        music_store[task_id] = music_url
+        print(f"✅ Stored music for task {task_id}: {music_url}")
+        return {"status": "stored", "taskId": task_id}
     else:
-        print(f"⚠️ No music URL found for task ID: {task_id}")
-
-    return {"status": "received"}
+        print(f"⚠️ Missing taskId or music_url in callback.")
+        return {"status": "error", "message": "Missing taskId or music_url"}
+@app.get("/music/{task_id}")
+def get_music(task_id: str):
+    music_url = music_store.get(task_id)
+    if music_url:
+        return {"taskId": task_id, "music_url": music_url}
+    else:
+        raise HTTPException(status_code=404, detail="Music not found for this task ID.")
